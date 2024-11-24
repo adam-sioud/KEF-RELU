@@ -37,7 +37,6 @@ dash-html-components==2.0.0
 dash-leaflet==1.0.15
 dash-table==5.0.0
 datasets==3.0.1
-dearpygui==1.4.0
 debugpy==1.8.8
 decorator==5.1.1
 defusedxml==0.7.1
