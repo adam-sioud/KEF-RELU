@@ -60,9 +60,9 @@ def plot_energy_data_with_anomalies(df, tagid, selected_clusters, selected_date_
 
     # Filter anomalies for selected clusters
     if selected_clusters and "All" not in selected_clusters:
-        anomalies = tagid_data[(tagid_data['cluster'].astype(str).isin(selected_clusters)) & (tagid_data['anomaly'] > 0.99)]
+        anomalies = tagid_data[(tagid_data['cluster'].astype(str).isin(selected_clusters)) & (tagid_data['anomaly'] > 0.995)]
     else:
-        anomalies = tagid_data[tagid_data['anomaly'] > 0.99]
+        anomalies = tagid_data[tagid_data['anomaly'] > 0.995]
 
     # Add anomaly points
     if not anomalies.empty:
@@ -127,8 +127,10 @@ def main():
             st.sidebar.header("🔧 Filters")
 
             # Calculate total delta_energy by TagID
+            df['cluster'] = df['cluster'].fillna(-99)
+
             tagid_summary = (
-                df.groupby('property_nr')
+                df.groupby('property_nr').filter(lambda x: x['cluster'] > -2)
                 .agg(total_delta_energy=('delta_energy', 'sum'))
                 .reset_index()
                 .sort_values(by='total_delta_energy', ascending=False)
