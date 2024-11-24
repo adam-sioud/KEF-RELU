@@ -12,11 +12,11 @@ def load_data(file):
     df['date'] = pd.to_datetime(df['date'], errors='coerce')
 
     # Convert numeric columns, coercing errors to NaN
-    numeric_columns = ['value', 'energy_prediction', 'anomaly', 'delta_energy', 'is_open', 'temp']
+    numeric_columns = ['value', 'energy_prediction', 'anomaly', 'delta_energy', 'is_open', 'temp', 'cluster']
     for col in numeric_columns:
         df[col] = pd.to_numeric(df[col], errors='coerce')
 
-    # Drop rows with NaN in critical columns
+    # Drop rows with NaN in critical columns (excluding 'cluster')
     df.dropna(subset=['date', 'value', 'energy_prediction', 'anomaly', 'delta_energy'], inplace=True)
 
     return df
@@ -24,7 +24,7 @@ def load_data(file):
 # Plot energy consumption and anomalies using Plotly
 def plot_energy_data_with_anomalies(df, tagid, selected_clusters, selected_date_range):
     # Filter data for the selected TagID
-    tagid_data = df[df['property_nr'] == tagid]
+    tagid_data = df[df['property_nr'] == tagid].copy()
 
     # Filter by selected date range
     start_date, end_date = selected_date_range
@@ -60,9 +60,12 @@ def plot_energy_data_with_anomalies(df, tagid, selected_clusters, selected_date_
 
     # Filter anomalies for selected clusters
     if selected_clusters and "All" not in selected_clusters:
-        anomalies = tagid_data[(tagid_data['cluster'].astype(str).isin(selected_clusters)) & (tagid_data['anomaly'] > 0.995)]
+        anomalies = tagid_data[
+            tagid_data['anomaly'] > 0.995
+        ].copy()
+        anomalies = anomalies[anomalies['cluster'].astype(str).isin(selected_clusters)]
     else:
-        anomalies = tagid_data[tagid_data['anomaly'] > 0.995]
+        anomalies = tagid_data[tagid_data['anomaly'] > 0.995].copy()
 
     # Add anomaly points
     if not anomalies.empty:
@@ -126,17 +129,17 @@ def main():
             # Sidebar for selection
             st.sidebar.header("🔧 Filters")
 
-            # Calculate total delta_energy by TagID
-            df['cluster'] = df['cluster'].fillna(-99)
+            # Exclude NaNs and -99 in 'cluster' from cluster summaries and selection
+            cluster_df = df.dropna(subset=['cluster']).copy()
+            cluster_df = cluster_df[cluster_df['cluster'] != -99]
 
+            # Calculate total delta_energy by TagID
             tagid_summary = (
-                    df.groupby('property_nr')
-                    .filter(lambda x: (x['cluster'] > -2).any())  # Check if any value in 'cluster' > -2 for each group
-                    .groupby('property_nr')  # Regroup after filtering
-                    .agg(total_delta_energy=('delta_energy', 'sum'))
-                    .reset_index()
-                    .sort_values(by='total_delta_energy', ascending=False)
-                )
+                df.groupby('property_nr')
+                .agg(total_delta_energy=('delta_energy', 'sum'))
+                .reset_index()
+                .sort_values(by='total_delta_energy', ascending=False)
+            )
 
             # Create dropdown options with delta_energy values
             tagid_options = tagid_summary.apply(
@@ -148,16 +151,18 @@ def main():
             selected_tagid_display = st.sidebar.selectbox("Select a TagID (Building):", tagid_options)
             selected_tagid = tagid_mapping[selected_tagid_display]
 
-            # Get all clusters for the selected TagID
-            tagid_data = df[df['property_nr'] == selected_tagid]
+            # Get all clusters for the selected TagID, excluding NaN and -99 clusters
+            tagid_cluster_data = cluster_df[cluster_df['property_nr'] == selected_tagid].copy()
+
             cluster_summary = (
-                tagid_data.groupby('cluster')
+                tagid_cluster_data.groupby('cluster')
                 .agg(
                     anomaly_count=('anomaly', lambda x: (x > 0.99).sum()),
                     delta_energy_sum=('delta_energy', 'sum')
                 )
                 .reset_index()
             )
+
             cluster_summary.rename(columns={'cluster': 'Cluster', 'anomaly_count': 'Anomaly Count', 'delta_energy_sum': 'Delta Energy (Sum)'}, inplace=True)
 
             st.sidebar.write("📊 Cluster Summary")
@@ -181,21 +186,24 @@ def main():
                 max_value=max_date
             )
 
-            
-            # Plot data
+            # Plot data (includes all data, even if 'cluster' is NaN or -99)
             plot_energy_data_with_anomalies(df, selected_tagid, selected_clusters, selected_date_range)
 
             # Anomaly Analysis
             st.subheader("📈 Anomaly Analysis")
 
-            # Filter data for selected tagid, clusters, and date range
-            filtered_data = df[df['property_nr'] == selected_tagid]
-            if "All" not in selected_clusters:
-                filtered_data = filtered_data[filtered_data['cluster'].astype(str).isin(selected_clusters)]
+            # Filter data for selected tagid and date range (include all clusters)
+            filtered_data = df[df['property_nr'] == selected_tagid].copy()
             start_date, end_date = selected_date_range
             filtered_data = filtered_data[(filtered_data['date'] >= pd.to_datetime(start_date)) & (filtered_data['date'] <= pd.to_datetime(end_date))]
 
-            anomalies = filtered_data[filtered_data['anomaly'] > 0.99]
+            # For anomalies, filter based on selected clusters
+            anomalies = filtered_data[filtered_data['anomaly'] > 0.99].copy()
+            if "All" not in selected_clusters:
+                # Exclude NaN and -99 clusters
+                anomalies = anomalies.dropna(subset=['cluster'])
+                anomalies = anomalies[anomalies['cluster'] != -99]
+                anomalies = anomalies[anomalies['cluster'].astype(str).isin(selected_clusters)]
 
             if anomalies.empty:
                 st.write("No anomalies detected for the selected TagID and clusters in the selected date range.")
@@ -231,13 +239,6 @@ def main():
                     st.write("#### Anomalies by Hour")
                     fig_hour = px.bar(anomalies_by_hour, x='hour', y='Anomaly Count', title='Anomalies by Hour')
                     st.plotly_chart(fig_hour, use_container_width=True)
-
-                    # Anomalies over time
-                    st.write("#### Anomalies Over Time")
-                    anomalies_over_time = anomalies.groupby(anomalies['date'].dt.to_period('M')).size().reset_index(name='Anomaly Count')
-                    anomalies_over_time['date'] = anomalies_over_time['date'].dt.to_timestamp()
-                    fig_over_time = px.line(anomalies_over_time, x='date', y='Anomaly Count', title='Anomalies Over Time')
-                    st.plotly_chart(fig_over_time, use_container_width=True)
 
             # Display filtered data table below
             st.subheader("📝 Filtered Data")
