@@ -130,11 +130,13 @@ def main():
             df['cluster'] = df['cluster'].fillna(-99)
 
             tagid_summary = (
-                df.groupby('property_nr').filter(lambda x: x['cluster'] > -2)
-                .agg(total_delta_energy=('delta_energy', 'sum'))
-                .reset_index()
-                .sort_values(by='total_delta_energy', ascending=False)
-            )
+                    df.groupby('property_nr')
+                    .filter(lambda x: (x['cluster'] > -2).any())  # Check if any value in 'cluster' > -2 for each group
+                    .groupby('property_nr')  # Regroup after filtering
+                    .agg(total_delta_energy=('delta_energy', 'sum'))
+                    .reset_index()
+                    .sort_values(by='total_delta_energy', ascending=False)
+                )
 
             # Create dropdown options with delta_energy values
             tagid_options = tagid_summary.apply(
