@@ -24,7 +24,7 @@ def load_data(file):
 # Plot energy consumption and anomalies using Plotly
 def plot_energy_data_with_anomalies(df, tagid, selected_clusters, selected_date_range):
     # Filter data for the selected TagID
-    tagid_data = df[df['tagid'] == tagid]
+    tagid_data = df[df['property_nr'] == tagid]
 
     # Filter by selected date range
     start_date, end_date = selected_date_range
