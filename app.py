@@ -128,7 +128,7 @@ def main():
 
             # Calculate total delta_energy by TagID
             tagid_summary = (
-                df.groupby('tagid')
+                df.groupby('property_nr')
                 .agg(total_delta_energy=('delta_energy', 'sum'))
                 .reset_index()
                 .sort_values(by='total_delta_energy', ascending=False)
@@ -136,16 +136,16 @@ def main():
 
             # Create dropdown options with delta_energy values
             tagid_options = tagid_summary.apply(
-                lambda row: f"{row['tagid']} (Δ Energy: {row['total_delta_energy']:.2f})", axis=1
+                lambda row: f"{row['property_nr']} (Δ Energy: {row['total_delta_energy']:.2f})", axis=1
             )
-            tagid_mapping = {f"{row['tagid']} (Δ Energy: {row['total_delta_energy']:.2f})": row['tagid'] for _, row in tagid_summary.iterrows()}
+            tagid_mapping = {f"{row['property_nr']} (Δ Energy: {row['total_delta_energy']:.2f})": row['property_nr'] for _, row in tagid_summary.iterrows()}
 
             # Select TagID with delta_energy displayed
             selected_tagid_display = st.sidebar.selectbox("Select a TagID (Building):", tagid_options)
             selected_tagid = tagid_mapping[selected_tagid_display]
 
             # Get all clusters for the selected TagID
-            tagid_data = df[df['tagid'] == selected_tagid]
+            tagid_data = df[df['property_nr'] == selected_tagid]
             cluster_summary = (
                 tagid_data.groupby('cluster')
                 .agg(
@@ -185,7 +185,7 @@ def main():
             st.subheader("📈 Anomaly Analysis")
 
             # Filter data for selected tagid, clusters, and date range
-            filtered_data = df[df['tagid'] == selected_tagid]
+            filtered_data = df[df['property_nr'] == selected_tagid]
             if "All" not in selected_clusters:
                 filtered_data = filtered_data[filtered_data['cluster'].astype(str).isin(selected_clusters)]
             start_date, end_date = selected_date_range
