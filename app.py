@@ -122,6 +122,17 @@ def main():
 
     # File upload in sidebar
     uploaded_file = st.sidebar.file_uploader("Upload your dataset CSV file", type="csv")
+
+    # Initialize session state for previous uploaded file
+    if 'prev_uploaded_file' not in st.session_state:
+        st.session_state['prev_uploaded_file'] = None
+
+    # Check if a new file has been uploaded
+    if uploaded_file and uploaded_file != st.session_state['prev_uploaded_file']:
+        # Clear the cache
+        st.cache_data.clear()
+        st.session_state['prev_uploaded_file'] = uploaded_file
+
     if uploaded_file:
         try:
             df = load_data(uploaded_file)
@@ -133,9 +144,13 @@ def main():
             cluster_df = df.dropna(subset=['cluster']).copy()
             cluster_df = cluster_df[cluster_df['cluster'] != -99]
 
-            # Calculate total delta_energy by TagID
+            # Exclude NaNs and -99 in 'cluster' from delta energy calculations
+            df_no_nan_clusters = df.dropna(subset=['cluster'])
+            df_no_nan_clusters = df_no_nan_clusters[df_no_nan_clusters['cluster'] != -99]
+
+            # Calculate total delta_energy by TagID without NaN clusters
             tagid_summary = (
-                df.groupby('property_nr')
+                df_no_nan_clusters.groupby('property_nr')
                 .agg(total_delta_energy=('delta_energy', 'sum'))
                 .reset_index()
                 .sort_values(by='total_delta_energy', ascending=False)
