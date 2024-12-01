@@ -3,8 +3,8 @@ import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 
-# Load the dataset
-@st.cache_data
+# Load the dataset with caching based on file hash
+@st.cache_data(hash_funcs={pd.DataFrame: lambda df: df.head(5)})
 def load_data(file):
     df = pd.read_csv(file)
 
@@ -28,7 +28,10 @@ def plot_energy_data_with_anomalies(df, tagid, selected_clusters, selected_date_
 
     # Filter by selected date range
     start_date, end_date = selected_date_range
-    tagid_data = tagid_data[(tagid_data['date'] >= pd.to_datetime(start_date)) & (tagid_data['date'] <= pd.to_datetime(end_date))]
+    tagid_data = tagid_data[
+        (tagid_data['date'] >= pd.to_datetime(start_date)) &
+        (tagid_data['date'] <= pd.to_datetime(end_date))
+    ]
 
     # Create a line plot for actual energy consumption
     fig = go.Figure()
@@ -61,9 +64,9 @@ def plot_energy_data_with_anomalies(df, tagid, selected_clusters, selected_date_
     # Filter anomalies for selected clusters
     if selected_clusters and "All" not in selected_clusters:
         anomalies = tagid_data[
-            tagid_data['anomaly'] > 0.995
-        ].copy()
-        anomalies = anomalies[anomalies['cluster'].astype(str).isin(selected_clusters)]
+            (tagid_data['anomaly'] > 0.995) &
+            (tagid_data['cluster'].astype(str).isin(selected_clusters))
+        ]
     else:
         anomalies = tagid_data[tagid_data['anomaly'] > 0.995].copy()
 
@@ -80,10 +83,8 @@ def plot_energy_data_with_anomalies(df, tagid, selected_clusters, selected_date_
             )
         )
 
-    # Convert clusters to strings for display
-    cluster_str = ", ".join(map(str, selected_clusters)) if "All" not in selected_clusters else "All"
-
     # Update layout for better visuals
+    cluster_str = ", ".join(map(str, selected_clusters)) if "All" not in selected_clusters else "All"
     fig.update_layout(
         title=f"Energy Consumption for TagID {tagid} (Clusters: {cluster_str})",
         xaxis_title="Date",
@@ -108,31 +109,10 @@ def main():
     # Sidebar content
     st.sidebar.title("🏢 Energy Consumption Dashboard")
 
-    # Sidebar styling
-    st.markdown(
-        """
-        <style>
-        [data-testid="stSidebar"] {
-            background-color: #f0f2f6;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
-
     # File upload in sidebar
     uploaded_file = st.sidebar.file_uploader("Upload your dataset CSV file", type="csv")
 
-    # Initialize session state for previous uploaded file
-    if 'prev_uploaded_file' not in st.session_state:
-        st.session_state['prev_uploaded_file'] = None
-
-    # Check if a new file has been uploaded
-    if uploaded_file and uploaded_file != st.session_state['prev_uploaded_file']:
-        # Clear the cache
-        st.cache_data.clear()
-        st.session_state['prev_uploaded_file'] = uploaded_file
-
+    # Check if a file is uploaded
     if uploaded_file:
         try:
             df = load_data(uploaded_file)
@@ -144,11 +124,9 @@ def main():
             cluster_df = df.dropna(subset=['cluster']).copy()
             cluster_df = cluster_df[cluster_df['cluster'] != -99]
 
-            # Exclude NaNs and -99 in 'cluster' from delta energy calculations
+            # Calculate total delta_energy by TagID without NaN clusters
             df_no_nan_clusters = df.dropna(subset=['cluster'])
             df_no_nan_clusters = df_no_nan_clusters[df_no_nan_clusters['cluster'] != -99]
-
-            # Calculate total delta_energy by TagID without NaN clusters
             tagid_summary = (
                 df_no_nan_clusters.groupby('property_nr')
                 .agg(total_delta_energy=('delta_energy', 'sum'))
@@ -160,7 +138,10 @@ def main():
             tagid_options = tagid_summary.apply(
                 lambda row: f"{row['property_nr']} (Δ Energy: {row['total_delta_energy']:.2f})", axis=1
             )
-            tagid_mapping = {f"{row['property_nr']} (Δ Energy: {row['total_delta_energy']:.2f})": row['property_nr'] for _, row in tagid_summary.iterrows()}
+            tagid_mapping = {
+                f"{row['property_nr']} (Δ Energy: {row['total_delta_energy']:.2f})": row['property_nr']
+                for _, row in tagid_summary.iterrows()
+            }
 
             # Select TagID with delta_energy displayed
             selected_tagid_display = st.sidebar.selectbox("Select a TagID (Building):", tagid_options)
@@ -178,7 +159,14 @@ def main():
                 .reset_index()
             )
 
-            cluster_summary.rename(columns={'cluster': 'Cluster', 'anomaly_count': 'Anomaly Count', 'delta_energy_sum': 'Delta Energy (Sum)'}, inplace=True)
+            cluster_summary.rename(
+                columns={
+                    'cluster': 'Cluster',
+                    'anomaly_count': 'Anomaly Count',
+                    'delta_energy_sum': 'Delta Energy (Sum)'
+                },
+                inplace=True
+            )
 
             st.sidebar.write("📊 Cluster Summary")
             st.sidebar.dataframe(cluster_summary, use_container_width=True)
@@ -186,7 +174,7 @@ def main():
             # Cluster selection
             cluster_options = ["All"] + cluster_summary['Cluster'].astype(str).tolist()
             selected_clusters = st.sidebar.multiselect(
-                "Select Clusters (default: All):", cluster_options, default="All"
+                "Select Clusters (default: All):", cluster_options, default=["All"]
             )
 
             # Date range selection
@@ -201,7 +189,7 @@ def main():
                 max_value=max_date
             )
 
-            # Plot data (includes all data, even if 'cluster' is NaN or -99)
+            # Plot data
             plot_energy_data_with_anomalies(df, selected_tagid, selected_clusters, selected_date_range)
 
             # Anomaly Analysis
@@ -210,7 +198,10 @@ def main():
             # Filter data for selected tagid and date range (include all clusters)
             filtered_data = df[df['property_nr'] == selected_tagid].copy()
             start_date, end_date = selected_date_range
-            filtered_data = filtered_data[(filtered_data['date'] >= pd.to_datetime(start_date)) & (filtered_data['date'] <= pd.to_datetime(end_date))]
+            filtered_data = filtered_data[
+                (filtered_data['date'] >= pd.to_datetime(start_date)) &
+                (filtered_data['date'] <= pd.to_datetime(end_date))
+            ]
 
             # For anomalies, filter based on selected clusters
             anomalies = filtered_data[filtered_data['anomaly'] > 0.99].copy()
@@ -261,7 +252,7 @@ def main():
 
         except Exception as e:
             st.error(f"An error occurred: {e}")
-
+            st.exception(e)
     else:
         st.sidebar.info("👈 Please upload a CSV file to start.")
 
